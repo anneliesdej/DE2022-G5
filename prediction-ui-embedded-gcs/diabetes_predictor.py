@@ -5,7 +5,7 @@ from keras.models import load_model
 import os
 
 
-class Predictor:
+class DiabetesPredictor:
     def __init__(self):
         self.model = None
 
