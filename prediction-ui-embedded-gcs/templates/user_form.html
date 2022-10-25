@@ -1,28 +1,40 @@
 <html>
 <body>
 
-<form action="/checkdiabetes" method="POST">
-    <h1> Check My Diabetes</h1>
-    <label for="ntp">Number of times pregnant:</label>
-    <input type="text" id="ntp" name="ntp" placeholder="ntp"> <br>
+<form action="/predict_heartattack" method="POST">
+    <h1> Will I get a heart attack</h1>
+    <label for="exng">Exercise induced angina ~ 1 = Yes, 0 = No:</label>
+    <input type="text" id="exng" name="exng" placeholder="exng"> <br>
 
-    <label for="pgc">Plasma glucose concentration a 2 hours in an oral glucose tolerance test:</label>
-    <input type="text" id="pgc" name="pgc" placeholder="pgc"> <br>
+    <label for="caa">Number of major vessels:</label>
+    <input type="text" id="caa" name="caa" placeholder="caa"> <br>
 
-    <label for="dbp">Diastolic blood pressure (mm Hg):</label>
-    <input type="text" id="dbp" name="dbp" placeholder="dbp"> <br>
+    <label for="cp">Chest pain type ~ 0 = Typical Angina, 1 = Atypical Angina, 2 = Non-anginal Pain, 3 = Asymptomatic:</label>
+    <input type="text" id="cp" name="cp" placeholder="cp"> <br>
 
-    <label for="tsft">Triceps skin fold thickness (mm):</label>
-    <input type="text" id="tsft" name="tsft" placeholder="tsft"> <br>
+    <label for="fbs">fasting blood sugar > 120 mg/dl ~ 1 = True, 0 = False:</label>
+    <input type="text" id="fbs" name="fbs" placeholder="fbs"> <br>
 
-    <label for="si">2-Hour serum insulin (mu U/ml):</label>
-    <input type="text" id="si" name="si" placeholder="si"> <br>
+    <label for="restecg">Resting electrocardiographic results ~ 0 = Normal, 1 = ST-T wave normality, 2 = Left ventricular hypertrophy:</label>
+    <input type="text" id="restecg" name="restecg" placeholder="restecg"> <br>
 
-    <label for="bmi">Body mass index:</label>
-    <input type="text" id="bmi" name="bmi" placeholder="bmi"> <br>
+    <label for="slp">Slope:</label>
+    <input type="text" id="slp" name="slp" placeholder="slp"> <br>
 
-    <label for="dpf">Diabetes pedigree function:</label>
-    <input type="text" id="dpf" name="dpf" placeholder="dpf"> <br>
+    <label for="thall">Thalium Stress Test result ~ (0,3):</label>
+    <input type="text" id="thall" name="thall" placeholder="thall"> <br>
+
+    <label for="trtbps">Resting blood pressure (mm Hg):</label>
+    <input type="text" id="trtbps" name="trtbps" placeholder="trtbps"> <br>
+
+    <label for="chol">Cholestoral in mg/dl fetched via BMI sensor:</label>
+    <input type="text" id="chol" name="chol" placeholder="chol"> <br>
+
+    <label for="thallachh">Maximum heart rate achieved:</label>
+    <input type="text" id="thallachh" name="thallachh" placeholder="thallachh"> <br>
+
+    <label for="oldpeak">Previous peak:</label>
+    <input type="text" id="oldpeak" name="oldpeak" placeholder="oldpeak"> <br>
 
     <label for="age">Age (years):</label>
     <input type="text" id="age" name="age" placeholder="age"> <br>
