@@ -1,0 +1,58 @@
+{
+  "steps": [
+	{
+       "name": "gcr.io/cloud-builders/gsutil",
+       "args": [
+           "cp",
+	       "gs://dmodel_a1/svc_model.h5",
+           "./prediction-ui-embedded-gcs"
+        ]
+    },
+    {
+      "name": "python",
+      "entrypoint": "/bin/sh",
+      "args": [
+        "-c",
+        "cd ./prediction-ui-embedded-gcs && python -m venv .myenv && . .myenv/bin/activate && pip install -r requirements_dev.txt && python -m pytest --junitxml=${SHORT_SHA}_test_log.xml",
+        "--user"
+      ]
+    },
+    {
+      "name": "gcr.io/cloud-builders/docker",
+      "args": [
+        "build",
+        "-t",
+        "gcr.io/de2022-rrd/prediction-ui-embedded-gcs:0.0.1",
+        "./prediction-ui-embedded-gcs"
+      ]
+    },
+    {
+      "name": "gcr.io/cloud-builders/docker",
+      "args": [
+        "push",
+        "gcr.io/de2022-rrd/prediction-ui-embedded-gcs:0.0.1"
+      ]
+    },
+    {
+      "name": "gcr.io/google.com/cloudsdktool/cloud-sdk",
+      "entrypoint": "gcloud",
+       "args": [
+        "run",
+        "deploy",
+        "prediction-service",
+        "--image",
+        "gcr.io/de2022-rrd/prediction-ui-embedded-gcs:0.0.1",
+        "--region",
+        "us-central1",
+        "--platform",
+        "managed",
+        "--allow-unauthenticated",
+        "--update-env-vars",
+        "PROJECT_ID=MODEL_NAME=svc_model.h5",
+        "--no-cpu-throttling",
+        "--memory",
+        "4 Gi"
+      ]
+    }
+  ]
+}

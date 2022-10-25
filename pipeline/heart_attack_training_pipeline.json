@@ -1,6 +1,26 @@
 {
   "pipelineSpec": {
     "components": {
+      "comp-compare-model-result": {
+        "executorLabel": "exec-compare-model-result",
+        "inputDefinitions": {
+          "parameters": {
+            "lr_metrics": {
+              "type": "STRING"
+            },
+            "svc_metrics": {
+              "type": "STRING"
+            }
+          }
+        },
+        "outputDefinitions": {
+          "parameters": {
+            "Output": {
+              "type": "STRING"
+            }
+          }
+        }
+      },
       "comp-download-data": {
         "executorLabel": "exec-download-data",
         "inputDefinitions": {
@@ -9,6 +29,29 @@
               "type": "STRING"
             },
             "file_name": {
+              "type": "STRING"
+            },
+            "project_id": {
+              "type": "STRING"
+            }
+          }
+        },
+        "outputDefinitions": {
+          "parameters": {
+            "Output": {
+              "type": "STRING"
+            }
+          }
+        }
+      },
+      "comp-train-lr": {
+        "executorLabel": "exec-train-lr",
+        "inputDefinitions": {
+          "parameters": {
+            "features": {
+              "type": "STRING"
+            },
+            "model_repo": {
               "type": "STRING"
             },
             "project_id": {
@@ -50,6 +93,25 @@
     },
     "deploymentSpec": {
       "executors": {
+        "exec-compare-model-result": {
+          "container": {
+            "args": [
+              "--svc-metrics",
+              "{{$.inputs.parameters['svc_metrics']}}",
+              "--lr-metrics",
+              "{{$.inputs.parameters['lr_metrics']}}",
+              "----output-paths",
+              "{{$.outputs.parameters['Output'].output_file}}"
+            ],
+            "command": [
+              "sh",
+              "-ec",
+              "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+              "def compare_model_result(svc_metrics, lr_metrics):\n    import logging\n    import json\n    import sys\n    logging.basicConfig(stream=sys.stdout, level=logging.INFO)\n    logging.info(svc_metrics)\n    logging.info(lr_metrics)\n    if svc_metrics.get(\"accuracy\") > lr_metrics.get(\"accuracy\"):\n        return \"SVC\"\n    else :\n        return \"LR\"\n\ndef _serialize_str(str_value: str) -> str:\n    if not isinstance(str_value, str):\n        raise TypeError('Value \"{}\" has type \"{}\" instead of str.'.format(\n            str(str_value), str(type(str_value))))\n    return str_value\n\nimport json\nimport argparse\n_parser = argparse.ArgumentParser(prog='Compare model result', description='')\n_parser.add_argument(\"--svc-metrics\", dest=\"svc_metrics\", type=json.loads, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--lr-metrics\", dest=\"lr_metrics\", type=json.loads, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"----output-paths\", dest=\"_output_paths\", type=str, nargs=1)\n_parsed_args = vars(_parser.parse_args())\n_output_files = _parsed_args.pop(\"_output_paths\", [])\n\n_outputs = compare_model_result(**_parsed_args)\n\n_outputs = [_outputs]\n\n_output_serializers = [\n    _serialize_str,\n\n]\n\nimport os\nfor idx, output_file in enumerate(_output_files):\n    try:\n        os.makedirs(os.path.dirname(output_file))\n    except OSError:\n        pass\n    with open(output_file, 'w') as f:\n        f.write(_output_serializers[idx](_outputs[idx]))\n"
+            ],
+            "image": "python:3.7"
+          }
+        },
         "exec-download-data": {
           "container": {
             "args": [
@@ -74,6 +136,30 @@
             "image": "python:3.7"
           }
         },
+        "exec-train-lr": {
+          "container": {
+            "args": [
+              "--features",
+              "{{$.inputs.parameters['features']}}",
+              "--project-id",
+              "{{$.inputs.parameters['project_id']}}",
+              "--model-repo",
+              "{{$.inputs.parameters['model_repo']}}",
+              "----output-paths",
+              "{{$.outputs.parameters['Output'].output_file}}"
+            ],
+            "command": [
+              "sh",
+              "-c",
+              "(PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'google-cloud-storage' 'pandas' 'joblib' 'scikit-learn' || PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location 'google-cloud-storage' 'pandas' 'joblib' 'scikit-learn' --user) && \"$0\" \"$@\"",
+              "sh",
+              "-ec",
+              "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
+              "def train_LR (features, project_id, model_repo ):\n    import pandas as pd\n    import numpy as np\n    import logging\n    import sys\n    import os\n    import joblib\n    from google.cloud import storage\n    from sklearn import metrics\n    from sklearn.model_selection import train_test_split\n    from sklearn.preprocessing import RobustScaler\n    from sklearn.linear_model import LogisticRegression\n    from sklearn.metrics import accuracy_score\n\n    logging.basicConfig(stream=sys.stdout, level=logging.INFO)\n\n    # reading data\n    df = pd.DataFrame.from_dict(features)\n    cat_cols = ['sex','exng','caa','cp','fbs','restecg','slp','thall']\n    con_cols = [\"age\",\"trtbps\",\"chol\",\"thalachh\",\"oldpeak\"]\n\n    # creating copy of df and encode categorical columns\n    df1 = df\n    df1 = pd.get_dummies(df1, columns = cat_cols, drop_first = True)\n\n    # defining features and target\n    y = df1[['output']]\n    X = df1.drop(['output'],axis=1)\n\n    # instantiate the scaler\n    scaler = RobustScaler()\n\n    # scaling the continuous features\n    X[con_cols] = scaler.fit_transform(X[con_cols])\n\n    # train test split and fit\n    X_train, X_test, y_train, y_test = train_test_split(X,y, test_size = 0.3, random_state = 42)\n\n    # instantiating the object\n    logreg = LogisticRegression()\n\n    # fitting the object\n    logreg.fit(X_train, y_train)\n\n    # calculating the probabilities\n    y_pred_proba = logreg.predict_proba(X_test)\n\n    # finding the predicted valued\n    y_pred = np.argmax(y_pred_proba,axis=1)\n\n    # Accuracy logging\n    metrics = {\n        \"accuracy\": accuracy_score(y_test, y_pred)\n    }\n    logging.info(metrics)\n\n    # Save the model localy\n    local_file = '/tmp/local_model.pkl'\n    joblib.dump(logreg, local_file)\n\n    # Save to GCS as model.pkl\n    client = storage.Client(project=project_id)\n    bucket = client.get_bucket(model_repo)\n    blob = bucket.blob('logreg_model.pkl')\n    # Upload the locally saved model\n    blob.upload_from_filename(local_file)\n\n    print(\"Saved the model to GCP bucket : \" + model_repo)\n    return metrics\n\ndef _serialize_json(obj) -> str:\n    if isinstance(obj, str):\n        return obj\n    import json\n\n    def default_serializer(obj):\n        if hasattr(obj, 'to_struct'):\n            return obj.to_struct()\n        else:\n            raise TypeError(\n                \"Object of type '%s' is not JSON serializable and does not have .to_struct() method.\"\n                % obj.__class__.__name__)\n\n    return json.dumps(obj, default=default_serializer, sort_keys=True)\n\nimport json\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train LR', description='')\n_parser.add_argument(\"--features\", dest=\"features\", type=json.loads, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--project-id\", dest=\"project_id\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--model-repo\", dest=\"model_repo\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"----output-paths\", dest=\"_output_paths\", type=str, nargs=1)\n_parsed_args = vars(_parser.parse_args())\n_output_files = _parsed_args.pop(\"_output_paths\", [])\n\n_outputs = train_LR(**_parsed_args)\n\n_outputs = [_outputs]\n\n_output_serializers = [\n    _serialize_json,\n\n]\n\nimport os\nfor idx, output_file in enumerate(_output_files):\n    try:\n        os.makedirs(os.path.dirname(output_file))\n    except OSError:\n        pass\n    with open(output_file, 'w') as f:\n        f.write(_output_serializers[idx](_outputs[idx]))\n"
+            ],
+            "image": "python:3.7"
+          }
+        },
         "exec-train-svc": {
           "container": {
             "args": [
@@ -93,7 +179,7 @@
               "sh",
               "-ec",
               "program_path=$(mktemp)\nprintf \"%s\" \"$0\" > \"$program_path\"\npython3 -u \"$program_path\" \"$@\"\n",
-              "def train_svc (features, project_id, model_repo ):\n    import pandas as pd\n    import numpy as np\n    import logging\n    import sys\n    import os\n    import joblib\n    from google.cloud import storage\n    from sklearn import metrics\n    from sklearn.model_selection import train_test_split\n    from sklearn.preprocessing import RobustScaler\n    from sklearn.svm import SVC\n    from sklearn.metrics import accuracy_score\n\n    logging.basicConfig(stream=sys.stdout, level=logging.INFO)\n\n    # reading data\n    df = pd.DataFrame.from_dict(features)\n    cat_cols = ['sex','exng','caa','cp','fbs','restecg','slp','thall']\n    con_cols = [\"age\",\"trtbps\",\"chol\",\"thalachh\",\"oldpeak\"]\n\n    # creating copy of df and encode categorical columns\n    df1 = df\n    df1 = pd.get_dummies(df1, columns = cat_cols, drop_first = True)\n\n    # defining features and target\n    y = df1[['output']]\n    X = df1.drop(['output'],axis=1)\n\n    # instantiate the scaler\n    scaler = RobustScaler()\n\n    # scaling the continuous features\n    X[con_cols] = scaler.fit_transform(X[con_cols])\n\n    # train test split and fit\n    X_train, X_test, y_train, y_test = train_test_split(X,y, test_size = 0.3, random_state = 42)\n    clf = SVC(kernel='linear', C=1, random_state=42).fit(X_train,y_train)\n    y_pred = clf.predict(X_test)\n\n    # Accuracy logging\n    metrics = {\n        \"accuracy\": accuracy_score(y_test, y_pred)\n    }\n    logging.info(metrics)\n\n    # Save the model localy\n    local_file = '/tmp/local_model.pkl'\n    joblib.dump(clf, local_file)\n\n    # Save to GCS as model.h5\n    client = storage.Client(project=project_id)\n    bucket = client.get_bucket(model_repo)\n    blob = bucket.blob('svc_model.pkl')\n    # Upload the locally saved model\n    blob.upload_from_filename(local_file)\n\n    print(\"Saved the model to GCP bucket : \" + model_repo)\n    return metrics\n\ndef _serialize_json(obj) -> str:\n    if isinstance(obj, str):\n        return obj\n    import json\n\n    def default_serializer(obj):\n        if hasattr(obj, 'to_struct'):\n            return obj.to_struct()\n        else:\n            raise TypeError(\n                \"Object of type '%s' is not JSON serializable and does not have .to_struct() method.\"\n                % obj.__class__.__name__)\n\n    return json.dumps(obj, default=default_serializer, sort_keys=True)\n\nimport json\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train svc', description='')\n_parser.add_argument(\"--features\", dest=\"features\", type=json.loads, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--project-id\", dest=\"project_id\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--model-repo\", dest=\"model_repo\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"----output-paths\", dest=\"_output_paths\", type=str, nargs=1)\n_parsed_args = vars(_parser.parse_args())\n_output_files = _parsed_args.pop(\"_output_paths\", [])\n\n_outputs = train_svc(**_parsed_args)\n\n_outputs = [_outputs]\n\n_output_serializers = [\n    _serialize_json,\n\n]\n\nimport os\nfor idx, output_file in enumerate(_output_files):\n    try:\n        os.makedirs(os.path.dirname(output_file))\n    except OSError:\n        pass\n    with open(output_file, 'w') as f:\n        f.write(_output_serializers[idx](_outputs[idx]))\n"
+              "def train_svc (features, project_id, model_repo ):\n    import pandas as pd\n    import numpy as np\n    import logging\n    import sys\n    import os\n    import joblib\n    from google.cloud import storage\n    from sklearn import metrics\n    from sklearn.model_selection import train_test_split\n    from sklearn.preprocessing import RobustScaler\n    from sklearn.svm import SVC\n    from sklearn.metrics import accuracy_score\n\n    logging.basicConfig(stream=sys.stdout, level=logging.INFO)\n\n    # reading data\n    df = pd.DataFrame.from_dict(features)\n    cat_cols = ['sex','exng','caa','cp','fbs','restecg','slp','thall']\n    con_cols = [\"age\",\"trtbps\",\"chol\",\"thalachh\",\"oldpeak\"]\n\n    # creating copy of df and encode categorical columns\n    df1 = df\n    df1 = pd.get_dummies(df1, columns = cat_cols, drop_first = True)\n\n    # defining features and target\n    y = df1[['output']]\n    X = df1.drop(['output'],axis=1)\n\n    # instantiate the scaler\n    scaler = RobustScaler()\n\n    # scaling the continuous features\n    X[con_cols] = scaler.fit_transform(X[con_cols])\n\n    # train test split and fit\n    X_train, X_test, y_train, y_test = train_test_split(X,y, test_size = 0.3, random_state = 42)\n    clf = SVC(kernel='linear', C=1, random_state=42).fit(X_train,y_train)\n    y_pred = clf.predict(X_test)\n\n    # Accuracy logging\n    metrics = {\n        \"accuracy\": accuracy_score(y_test, y_pred)\n    }\n    logging.info(metrics)\n\n    # Save the model localy\n    local_file = '/tmp/local_model.pkl'\n    joblib.dump(clf, local_file)\n\n    # Save to GCS as model.pkl\n    client = storage.Client(project=project_id)\n    bucket = client.get_bucket(model_repo)\n    blob = bucket.blob('svc_model.pkl')\n    # Upload the locally saved model\n    blob.upload_from_filename(local_file)\n\n    print(\"Saved the model to GCP bucket : \" + model_repo)\n    return metrics\n\ndef _serialize_json(obj) -> str:\n    if isinstance(obj, str):\n        return obj\n    import json\n\n    def default_serializer(obj):\n        if hasattr(obj, 'to_struct'):\n            return obj.to_struct()\n        else:\n            raise TypeError(\n                \"Object of type '%s' is not JSON serializable and does not have .to_struct() method.\"\n                % obj.__class__.__name__)\n\n    return json.dumps(obj, default=default_serializer, sort_keys=True)\n\nimport json\nimport argparse\n_parser = argparse.ArgumentParser(prog='Train svc', description='')\n_parser.add_argument(\"--features\", dest=\"features\", type=json.loads, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--project-id\", dest=\"project_id\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"--model-repo\", dest=\"model_repo\", type=str, required=True, default=argparse.SUPPRESS)\n_parser.add_argument(\"----output-paths\", dest=\"_output_paths\", type=str, nargs=1)\n_parsed_args = vars(_parser.parse_args())\n_output_files = _parsed_args.pop(\"_output_paths\", [])\n\n_outputs = train_svc(**_parsed_args)\n\n_outputs = [_outputs]\n\n_output_serializers = [\n    _serialize_json,\n\n]\n\nimport os\nfor idx, output_file in enumerate(_output_files):\n    try:\n        os.makedirs(os.path.dirname(output_file))\n    except OSError:\n        pass\n    with open(output_file, 'w') as f:\n        f.write(_output_serializers[idx](_outputs[idx]))\n"
             ],
             "image": "python:3.7"
           }
@@ -106,6 +192,37 @@
     "root": {
       "dag": {
         "tasks": {
+          "compare-model-result": {
+            "cachingOptions": {
+              "enableCache": true
+            },
+            "componentRef": {
+              "name": "comp-compare-model-result"
+            },
+            "dependentTasks": [
+              "train-lr",
+              "train-svc"
+            ],
+            "inputs": {
+              "parameters": {
+                "lr_metrics": {
+                  "taskOutputParameter": {
+                    "outputParameterKey": "Output",
+                    "producerTask": "train-lr"
+                  }
+                },
+                "svc_metrics": {
+                  "taskOutputParameter": {
+                    "outputParameterKey": "Output",
+                    "producerTask": "train-svc"
+                  }
+                }
+              }
+            },
+            "taskInfo": {
+              "name": "compare-model-result"
+            }
+          },
           "download-data": {
             "cachingOptions": {
               "enableCache": true
@@ -128,6 +245,36 @@
             },
             "taskInfo": {
               "name": "download-data"
+            }
+          },
+          "train-lr": {
+            "cachingOptions": {
+              "enableCache": true
+            },
+            "componentRef": {
+              "name": "comp-train-lr"
+            },
+            "dependentTasks": [
+              "download-data"
+            ],
+            "inputs": {
+              "parameters": {
+                "features": {
+                  "taskOutputParameter": {
+                    "outputParameterKey": "Output",
+                    "producerTask": "download-data"
+                  }
+                },
+                "model_repo": {
+                  "componentInputParameter": "model_repo"
+                },
+                "project_id": {
+                  "componentInputParameter": "project_id"
+                }
+              }
+            },
+            "taskInfo": {
+              "name": "train-lr"
             }
           },
           "train-svc": {

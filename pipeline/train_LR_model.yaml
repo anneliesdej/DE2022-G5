@@ -1,4 +1,4 @@
-name: Train svc
+name: Train LR
 inputs:
 - {name: features, type: typing.Dict}
 - {name: project_id, type: String}
@@ -22,7 +22,7 @@ implementation:
       printf "%s" "$0" > "$program_path"
       python3 -u "$program_path" "$@"
     - |
-      def train_svc (features, project_id, model_repo ):
+      def train_LR (features, project_id, model_repo ):
           import pandas as pd
           import numpy as np
           import logging
@@ -33,7 +33,7 @@ implementation:
           from sklearn import metrics
           from sklearn.model_selection import train_test_split
           from sklearn.preprocessing import RobustScaler
-          from sklearn.svm import SVC
+          from sklearn.linear_model import LogisticRegression
           from sklearn.metrics import accuracy_score
 
           logging.basicConfig(stream=sys.stdout, level=logging.INFO)
@@ -59,8 +59,18 @@ implementation:
 
           # train test split and fit
           X_train, X_test, y_train, y_test = train_test_split(X,y, test_size = 0.3, random_state = 42)
-          clf = SVC(kernel='linear', C=1, random_state=42).fit(X_train,y_train)
-          y_pred = clf.predict(X_test)
+
+          # instantiating the object
+          logreg = LogisticRegression()
+
+          # fitting the object
+          logreg.fit(X_train, y_train)
+
+          # calculating the probabilities
+          y_pred_proba = logreg.predict_proba(X_test)
+
+          # finding the predicted valued
+          y_pred = np.argmax(y_pred_proba,axis=1)
 
           # Accuracy logging
           metrics = {
@@ -70,12 +80,12 @@ implementation:
 
           # Save the model localy
           local_file = '/tmp/local_model.pkl'
-          joblib.dump(clf, local_file)
+          joblib.dump(logreg, local_file)
 
           # Save to GCS as model.pkl
           client = storage.Client(project=project_id)
           bucket = client.get_bucket(model_repo)
-          blob = bucket.blob('svc_model.pkl')
+          blob = bucket.blob('logreg_model.pkl')
           # Upload the locally saved model
           blob.upload_from_filename(local_file)
 
@@ -99,7 +109,7 @@ implementation:
 
       import json
       import argparse
-      _parser = argparse.ArgumentParser(prog='Train svc', description='')
+      _parser = argparse.ArgumentParser(prog='Train LR', description='')
       _parser.add_argument("--features", dest="features", type=json.loads, required=True, default=argparse.SUPPRESS)
       _parser.add_argument("--project-id", dest="project_id", type=str, required=True, default=argparse.SUPPRESS)
       _parser.add_argument("--model-repo", dest="model_repo", type=str, required=True, default=argparse.SUPPRESS)
@@ -107,7 +117,7 @@ implementation:
       _parsed_args = vars(_parser.parse_args())
       _output_files = _parsed_args.pop("_output_paths", [])
 
-      _outputs = train_svc(**_parsed_args)
+      _outputs = train_LR(**_parsed_args)
 
       _outputs = [_outputs]
 
