@@ -12,9 +12,9 @@ class HeartAttackPredictor:
         self.model = None
 
     def download_model(self):
-        project_id = os.environ.get('PROJECT_ID', 'Specified environment variable is not set.')
-        model_repo = os.environ.get('MODEL_REPO', 'Specified environment variable is not set.')
-        model_name = os.environ.get('MODEL_NAME', 'Specified environment variable is not set.')
+        project_id = os.environ.get('PROJECT_ID')
+        model_repo = os.environ.get('MODEL_REPO')
+        model_name = os.environ.get('MODEL_NAME')
         client = storage.Client(project=project_id)
         bucket = client.get_bucket(model_repo)
         blob = bucket.blob(model_name)
