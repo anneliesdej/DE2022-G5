@@ -9,7 +9,7 @@
         ]
     },
     {
-      "name": "python",
+      "name": "python:3.10.8-slim-buster",
       "entrypoint": "/bin/sh",
       "args": [
         "-c",
@@ -22,7 +22,7 @@
       "args": [
         "build",
         "-t",
-        "gcr.io/$PROJECT_ID/prediction-ui-embedded-gcs:9.9.9",
+        "gcr.io/de2022-rrd/prediction-ui-embedded-gcs:9.9.9",
         "./prediction-ui-embedded-gcs"
       ]
     },
@@ -30,7 +30,7 @@
       "name": "gcr.io/cloud-builders/docker",
       "args": [
         "push",
-        "gcr.io/$PROJECT_ID/prediction-ui-embedded-gcs:9.9.9"
+        "gcr.io/de2022-rrd/prediction-ui-embedded-gcs:9.9.9"
       ]
     },
     {
@@ -41,7 +41,7 @@
         "deploy",
         "prediction-service",
         "--image",
-        "gcr.io/$PROJECT_ID/prediction-ui-embedded-gcs:9.9.9",
+        "gcr.io/de2022-rrd/prediction-ui-embedded-gcs:9.9.9",
         "--region",
         "us-central1",
         "--platform",
