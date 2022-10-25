@@ -3,4 +3,5 @@ pandas
 keras
 numpy
 h5py
+tensorflow
 six
