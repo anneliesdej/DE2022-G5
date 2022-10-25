@@ -1,0 +1,68 @@
+name: Compare model result
+inputs:
+- {name: svc_metrics, type: typing.Dict}
+- {name: lr_metrics, type: typing.Dict}
+outputs:
+- {name: Output, type: String}
+implementation:
+  container:
+    image: python:3.7
+    command:
+    - sh
+    - -ec
+    - |
+      program_path=$(mktemp)
+      printf "%s" "$0" > "$program_path"
+      python3 -u "$program_path" "$@"
+    - |
+      def compare_model_result(svc_metrics, lr_metrics):
+          import logging
+          import json
+          import sys
+          logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+          logging.info(svc_metrics)
+          logging.info(lr_metrics)
+          if svc_metrics.get("accuracy") > lr_metrics.get("accuracy"):
+              return "SVC"
+          else :
+              return "LR"
+
+      def _serialize_str(str_value: str) -> str:
+          if not isinstance(str_value, str):
+              raise TypeError('Value "{}" has type "{}" instead of str.'.format(
+                  str(str_value), str(type(str_value))))
+          return str_value
+
+      import json
+      import argparse
+      _parser = argparse.ArgumentParser(prog='Compare model result', description='')
+      _parser.add_argument("--svc-metrics", dest="svc_metrics", type=json.loads, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("--lr-metrics", dest="lr_metrics", type=json.loads, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("----output-paths", dest="_output_paths", type=str, nargs=1)
+      _parsed_args = vars(_parser.parse_args())
+      _output_files = _parsed_args.pop("_output_paths", [])
+
+      _outputs = compare_model_result(**_parsed_args)
+
+      _outputs = [_outputs]
+
+      _output_serializers = [
+          _serialize_str,
+
+      ]
+
+      import os
+      for idx, output_file in enumerate(_output_files):
+          try:
+              os.makedirs(os.path.dirname(output_file))
+          except OSError:
+              pass
+          with open(output_file, 'w') as f:
+              f.write(_output_serializers[idx](_outputs[idx]))
+    args:
+    - --svc-metrics
+    - {inputValue: svc_metrics}
+    - --lr-metrics
+    - {inputValue: lr_metrics}
+    - '----output-paths'
+    - {outputPath: Output}

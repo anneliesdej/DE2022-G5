@@ -1,0 +1,135 @@
+name: Train svc
+inputs:
+- {name: features, type: typing.Dict}
+- {name: project_id, type: String}
+- {name: model_repo, type: String}
+outputs:
+- {name: Output, type: typing.Dict}
+implementation:
+  container:
+    image: python:3.7
+    command:
+    - sh
+    - -c
+    - (PIP_DISABLE_PIP_VERSION_CHECK=1 python3 -m pip install --quiet --no-warn-script-location
+      'google-cloud-storage' 'tensorflow' 'pandas' 'joblib' 'scikit-learn' || PIP_DISABLE_PIP_VERSION_CHECK=1
+      python3 -m pip install --quiet --no-warn-script-location 'google-cloud-storage'
+      'tensorflow' 'pandas' 'joblib' 'scikit-learn' --user) && "$0" "$@"
+    - sh
+    - -ec
+    - |
+      program_path=$(mktemp)
+      printf "%s" "$0" > "$program_path"
+      python3 -u "$program_path" "$@"
+    - |
+      def train_svc (features, project_id, model_repo ):
+          import pandas as pd
+          import numpy as np
+          import logging
+          import sys
+          import os
+          import joblib
+          from google.cloud import storage
+          from sklearn import metrics
+          from sklearn.model_selection import train_test_split
+          from sklearn.preprocessing import RobustScaler
+          from sklearn.svm import SVC
+          from sklearn.metrics import accuracy_score
+
+          logging.basicConfig(stream=sys.stdout, level=logging.INFO)
+
+          # reading data
+          df = pd.DataFrame.from_dict(features)
+          cat_cols = ['sex','exng','caa','cp','fbs','restecg','slp','thall']
+          con_cols = ["age","trtbps","chol","thalachh","oldpeak"]
+
+          # creating copy of df and encode categorical columns
+          df1 = df
+          df1 = pd.get_dummies(df1, columns = cat_cols, drop_first = True)
+
+          # defining features and target
+          y = df1[['output']]
+          X = df1.drop(['output'],axis=1)
+
+          # instantiate the scaler
+          scaler = RobustScaler()
+
+          # scaling the continuous features
+          X[con_cols] = scaler.fit_transform(X[con_cols])
+
+          # train test split and fit
+          X_train, X_test, y_train, y_test = train_test_split(X,y, test_size = 0.3, random_state = 42)
+          clf = SVC(kernel='linear', C=1, random_state=42).fit(X_train,y_train)
+          y_pred = clf.predict(X_test)
+
+          # Accuracy logging
+          metrics = {
+              "accuracy": accuracy_score(y_test, y_pred)
+          }
+          logging.info(metrics)
+
+          # Save the model localy
+          local_file = '/tmp/local_model.h5'
+          joblib.dump(clf, local_file)
+
+          # Save to GCS as model.pkl
+          client = storage.Client(project=project_id)
+          bucket = client.get_bucket(model_repo)
+          blob = bucket.blob('svc_model.h5')
+          # Upload the locally saved model
+          blob.upload_from_filename(local_file)
+
+          print("Saved the model to GCP bucket : " + model_repo)
+          return metrics
+
+      def _serialize_json(obj) -> str:
+          if isinstance(obj, str):
+              return obj
+          import json
+
+          def default_serializer(obj):
+              if hasattr(obj, 'to_struct'):
+                  return obj.to_struct()
+              else:
+                  raise TypeError(
+                      "Object of type '%s' is not JSON serializable and does not have .to_struct() method."
+                      % obj.__class__.__name__)
+
+          return json.dumps(obj, default=default_serializer, sort_keys=True)
+
+      import json
+      import argparse
+      _parser = argparse.ArgumentParser(prog='Train svc', description='')
+      _parser.add_argument("--features", dest="features", type=json.loads, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("--project-id", dest="project_id", type=str, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("--model-repo", dest="model_repo", type=str, required=True, default=argparse.SUPPRESS)
+      _parser.add_argument("----output-paths", dest="_output_paths", type=str, nargs=1)
+      _parsed_args = vars(_parser.parse_args())
+      _output_files = _parsed_args.pop("_output_paths", [])
+
+      _outputs = train_svc(**_parsed_args)
+
+      _outputs = [_outputs]
+
+      _output_serializers = [
+          _serialize_json,
+
+      ]
+
+      import os
+      for idx, output_file in enumerate(_output_files):
+          try:
+              os.makedirs(os.path.dirname(output_file))
+          except OSError:
+              pass
+          with open(output_file, 'w') as f:
+              f.write(_output_serializers[idx](_outputs[idx]))
+    args:
+    - --features
+    - {inputValue: features}
+    - --project-id
+    - {inputValue: project_id}
+    - --model-repo
+    - {inputValue: model_repo}
+    - '----output-paths'
+    - {outputPath: Output}
