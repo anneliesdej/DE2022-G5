@@ -11,7 +11,7 @@ app = Flask(__name__)
 app.config["DEBUG"] = True
 
 # A decorator used to tell the application which URL is associated function
-@app.route('/heartattack_predictor', methods=["GET", "POST"])
+@app.route('/predict_heartattack', methods=["GET", "POST"])
 def predict_heartattack():
     if request.method == "POST":
         prediction_input = [
