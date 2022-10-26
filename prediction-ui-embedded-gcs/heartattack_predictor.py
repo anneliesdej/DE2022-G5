@@ -11,21 +11,11 @@ class HeartAttackPredictor:
     def __init__(self):
         self.model = None
 
-    def download_model(self):
-        project_id = os.environ.get('PROJECT_ID')
-        model_repo = os.environ.get('MODEL_REPO')
-        model_name = os.environ.get('MODEL_NAME')
-        client = storage.Client(project=project_id)
-        bucket = client.get_bucket(model_repo)
-        blob = bucket.blob(model_name)
-        blob.download_to_filename('svc_model.h5')
-        self.model = load_model('svc_model.h5')
-        return jsonify({'message': " the model was downloaded"}), 200
-
     def predict_single_record(self, prediction_input):
         print(prediction_input)
+        model_name = os.environ.get('MODEL_NAME', 'Specified environment variable is not set.')
         if self.model is None:
-            self.download_model()
+            self.model = load_model(model_name)
         print(json.dumps(prediction_input))
         df = pd.read_json(json.dumps(prediction_input), orient='records')
         print(df)
