@@ -1,6 +1,6 @@
 import json
 import os
-
+from flask import jsonify
 import pandas as pd
 from keras.models import load_model
 
